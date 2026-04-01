@@ -62,6 +62,10 @@ def context_node(state: GraphState) -> GraphState:
 
     patient_input = state.get("patient_input", "")
     examples = vector_store.retrieve_few_shot_examples(patient_input)
+    
+    # ── Console log so you can visually verify RAG is working during chat ──
+    print(f"\n[RAG] 🔍 Retrieved {len(examples)} relevant examples from MediTOD for input: '{patient_input}'")
+    
     return {**state, "rag_examples": examples}
 
 

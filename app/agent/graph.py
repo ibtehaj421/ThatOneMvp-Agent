@@ -55,7 +55,8 @@ def _should_conclude(state: GraphState) -> str:
     if len(messages) >= config.MAX_CONVERSATION_TURNS:
         return "soap"
 
-    return "localize"
+    # End the graph execution for this turn and yield back to the FastAPI user
+    return "end"
 
 
 # ── Build the graph ───────────────────────────────────────────────────────────
@@ -76,13 +77,13 @@ def build_graph() -> StateGraph:
     graph.add_edge("localize", "context")
     graph.add_edge("context", "generate")
 
-    # Conditional: after generate, either loop or conclude
+    # Conditional: after generate, either end the turn or conclude with soap
     graph.add_conditional_edges(
         "generate",
         _should_conclude,
         {
-            "localize": "localize",   # loop back for next patient turn
-            "soap": "soap",           # write the SOAP note
+            "end": END,               # Stop execution, yield to user
+            "soap": "soap",           # Write the SOAP note
         },
     )
 
