@@ -31,62 +31,20 @@ from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 
-class PatientSession(Base):
-    __tablename__ = "patient_sessions"
+class InterviewSession(Base):
+    """
+    Maps directly to the \`interview_sessions\` table created by the Go backend.
+    Uses a composite primary key (patient_id, session_seq) and stores the stateless
+    context in JSON columns.
+    """
+    __tablename__ = "interview_sessions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(String(255), nullable=True, index=True)   # Optional in MVP
-    session_id = Column(String(255), unique=True, nullable=False, index=True)
-    patient_name = Column(String(255), nullable=True)
-    status = Column(String(50), default="active")                  # active | completed | abandoned | timed_out
+    patient_id = Column(Integer, primary_key=True, autoincrement=False)
+    session_seq = Column(Integer, primary_key=True, autoincrement=False)
+
+    status = Column(String(20), default="in_progress")
+    dialogue_history = Column(JSON, default=list) # Stores Langchain array payload
+    extracted_slots = Column(JSON, default=dict)  # Stores CMAS slots
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    completed_at = Column(DateTime, nullable=True)
-
-    # Relationships
-    messages = relationship(
-        "ConversationMessage",
-        back_populates="session",
-        cascade="all, delete-orphan",
-        order_by="ConversationMessage.timestamp",
-    )
-    history_data = relationship(
-        "CollectedHistory",
-        back_populates="session",
-        cascade="all, delete-orphan",
-    )
-
-
-class ConversationMessage(Base):
-    __tablename__ = "conversation_messages"
-
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(
-        Integer,
-        ForeignKey("patient_sessions.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    role = Column(String(50), nullable=False)     # user | assistant | system
-    content = Column(Text, nullable=False)
-    meta = Column(JSON, nullable=True)            # renamed from `metadata` to avoid shadowing SA attribute
-    timestamp = Column(DateTime, default=datetime.utcnow)
-
-    session = relationship("PatientSession", back_populates="messages")
-
-
-class CollectedHistory(Base):
-    __tablename__ = "collected_history"
-
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(
-        Integer,
-        ForeignKey("patient_sessions.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    category = Column(String(100), nullable=False)    # CMAS slot type
-    field_name = Column(String(255), nullable=False)
-    value = Column(Text, nullable=False)              # JSON-serialised slot value
-    confidence = Column(Integer, default=100)         # 0–100; reserved for future NLU confidence scoring
-    extracted_at = Column(DateTime, default=datetime.utcnow)
-
-    session = relationship("PatientSession", back_populates="history_data")
