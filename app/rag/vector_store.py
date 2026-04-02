@@ -50,6 +50,16 @@ class MediTODVectorStore:
         try:
             store = self._get_store()
             results = store.similarity_search(patient_utterance, k=k)
+            for i, doc in enumerate(results, 1):
+                meta = doc.metadata
+                symptoms = meta.get("symptoms", [])
+                slot_types = meta.get("slot_types", [])
+                dialog_id = meta.get("dialog_id", "?")
+                urange = meta.get("utterance_range", "?")
+                print(
+                    f"   [RAG chunk {i}] dialog={dialog_id} "
+                    f"turns={urange} symptoms={symptoms} slots={slot_types}"
+                )
             return [doc.page_content for doc in results]
         except Exception as exc:
             # Gracefully degrade — return an empty list so the agent can still

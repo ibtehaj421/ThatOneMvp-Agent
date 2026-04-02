@@ -193,39 +193,59 @@ def _parse_llm_response(
     current_json_state: CMASState,
 ) -> tuple[CMASState, bool, str]:
     """
-    Extract the JSON block and the follow-up question from the LLM output.
-
-    The model is instructed to output JSON first, then the question. We use
-    a regex to find the JSON block and treat the remainder as the next question.
+    Extract the JSON block and the follow-up question using bracket counting.
+    This safely handles nested JSON objects without truncating early.
     """
-    # 1. Try to find a JSON object in the response
-    json_match = re.search(r"\{[\s\S]*?\}", raw_text, re.DOTALL)
     updated_json_state: CMASState = dict(current_json_state)  # type: ignore[assignment]
     session_complete: bool = False
+    question_text = ""
 
-    if json_match:
-        try:
-            parsed = json.loads(json_match.group())
-            session_complete = bool(parsed.get("session_complete", False))
-            extracted = parsed.get("extracted", {})
-            # Merge newly extracted slots into the running CMAS state
-            for slot_type, slot_values in extracted.items():
-                if slot_type not in updated_json_state:
-                    updated_json_state[slot_type] = slot_values  # type: ignore[literal-required]
-                elif isinstance(updated_json_state.get(slot_type), list):
-                    updated_json_state[slot_type].extend(slot_values)  # type: ignore[literal-required]
-                else:
-                    updated_json_state[slot_type] = slot_values  # type: ignore[literal-required]
-        except json.JSONDecodeError:
-            pass  # Non-critical — state remains unchanged
-
-    # 2. Extract the conversational question (text after the JSON block)
-    if json_match:
-        question_text = raw_text[json_match.end():].strip()
+    # 1. Find the start of the JSON object
+    start_idx = raw_text.find('{')
+    
+    if start_idx != -1:
+        # Use bracket counting to find the exact end of the JSON object
+        brace_count = 0
+        end_idx = -1
+        
+        for i in range(start_idx, len(raw_text)):
+            if raw_text[i] == '{':
+                brace_count += 1
+            elif raw_text[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_idx = i + 1
+                    break
+        
+        # 2. Extract and parse the matched JSON block
+        if end_idx != -1:
+            json_str = raw_text[start_idx:end_idx]
+            try:
+                parsed = json.loads(json_str)
+                session_complete = bool(parsed.get("session_complete", False))
+                extracted = parsed.get("extracted", {})
+                
+                # Merge newly extracted slots into the running CMAS state
+                for slot_type, slot_values in extracted.items():
+                    if slot_type not in updated_json_state:
+                        updated_json_state[slot_type] = slot_values  # type: ignore[literal-required]
+                    elif isinstance(updated_json_state.get(slot_type), list):
+                        updated_json_state[slot_type].extend(slot_values)  # type: ignore[literal-required]
+                    else:
+                        updated_json_state[slot_type] = slot_values  # type: ignore[literal-required]
+            except json.JSONDecodeError:
+                pass  # Non-critical — state remains unchanged
+            
+            # 3. The conversational question is everything after the JSON block
+            question_text = raw_text[end_idx:].strip()
+        else:
+            # Fallback if braces are unbalanced
+            question_text = raw_text.strip()
     else:
+        # Fallback if no JSON is found at all
         question_text = raw_text.strip()
 
-    # Fallback if there's nothing left after the JSON
+    # Fallback if there's nothing left after extracting the JSON
     if not question_text:
         question_text = "Could you tell me more about how you're feeling?"
 
