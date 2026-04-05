@@ -178,12 +178,13 @@ async def session_chat(request: ChatRequest, db: Session = Depends(get_db)):
     if not messages:
         messages.append(AIMessage(content=GREETING_MESSAGE))
 
-    messages.append(HumanMessage(content=request.message))
+    # Do not append HumanMessage here — generate_node appends it once to the LLM
+    # and to new_messages. Double-appending corrupts history and confuses the model.
 
     # Construct the GraphState payload structure required by Langgraph 
     # Provide the last question explicitly to inform the model context processing.
     last_question = ""
-    for m in reversed(messages[:-1]): 
+    for m in reversed(messages):
         if isinstance(m, AIMessage):
             last_question = m.content
             break

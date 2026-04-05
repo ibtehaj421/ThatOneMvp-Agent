@@ -43,12 +43,23 @@ def _should_conclude(state: GraphState) -> str:
     Conditional edge function used after the generate node.
 
     Concludes (→ soap) when:
-      1. The LLM explicitly sets session_complete = True, OR
-      2. The conversation exceeds MAX_CONVERSATION_TURNS (hard safety limit
-         ported from the original agent.py 30-turn guard).
+      1. The LLM explicitly sets session_complete = True AND mandatory slots are filled.
+      2. The conversation exceeds MAX_CONVERSATION_TURNS (hard safety limit).
     """
-    if state.get("session_complete", False):
-        return "soap"
+    session_complete = state.get("session_complete", False)
+    json_state = state.get("json_state", {})
+    
+    # Validation: Ensure we have at least a chief complaint and one symptom
+    has_chief = bool(json_state.get("chief_complaint"))
+    has_pos_symptoms = len(json_state.get("positive_symptoms", [])) > 0
+    
+    if session_complete:
+        if has_chief and has_pos_symptoms:
+            return "soap"
+        else:
+            # If LLM tries to end without data, force it to continue
+            print("[AUTO-RECOVER] 🔄 LLM tried to end session, but mandatory slots were missing. Forcing continuation.")
+            return "end"
 
     # Hard turn limit — prevents runaway sessions
     messages: list[BaseMessage] = state.get("messages", [])
